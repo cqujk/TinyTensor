@@ -9,8 +9,37 @@ Shape infer_broadcast(const Shape &A, const Shape &B) {
     // TODO：对 A 和 B 进行双向广播，返回广播后的形状。
     // REF: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
     // =================================== 作业 ===================================
+    size_t a_rank=A.size();
+    size_t b_rank = B.size();
+    size_t max_rank = std::max(a_rank, b_rank);
+    // 创建补1后的形状容器
+    Shape A_padded = A;
+    Shape B_padded = B;
     
-    return {};
+    // 在形状前面补1，直到维度数一致（ONNX规则）
+    while (A_padded.size() < max_rank)
+        A_padded.insert(A_padded.begin(), 1);
+    while (B_padded.size() < max_rank)
+        B_padded.insert(B_padded.begin(), 1);
+
+    Shape result;
+    for (size_t i = 0; i < max_rank; ++i) {
+        const int dimA = A_padded[i];
+        const int dimB = B_padded[i];
+        
+        // 检查维度兼容性（ONNX广播规则）
+        if (dimA == dimB) {
+            result.push_back(dimA);
+        } else if (dimA == 1) {
+            result.push_back(dimB);
+        } else if (dimB == 1) {
+            result.push_back(dimA);
+        } else {
+            // 无法广播时触发断言
+            printf("Broadcast failed at dimension %zu: A=%d B=%d\n", i, dimA, dimB);
+        }
+    }
+    return result;
 }
 
 int get_real_axis(const int &axis, const int &rank) {
