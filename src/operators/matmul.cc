@@ -2,6 +2,7 @@
 
 namespace infini
 {
+    Shape infer_broadcast(const Shape &A, const Shape &B);
 
     MatmulObj::MatmulObj(GraphObj *graph, Tensor A, Tensor B, Tensor C, bool transA,
                          bool transB)
@@ -71,6 +72,6 @@ namespace infini
         // 组合最终输出形状
         Shape output_shape = batch_shape;
         output_shape.insert(output_shape.end(), {a_rows, b_cols});
+        return {{output_shape}};
         }
-
 } // namespace infini

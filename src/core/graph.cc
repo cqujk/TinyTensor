@@ -106,8 +106,80 @@ namespace infini
         // 1. 去除冗余的算子（例如，两个相邻的算子都是 transpose 算子，且做的是相反的操作，可以将其全部删除）
         // 2. 合并算子（例如，矩阵乘算子中含有属性transA、transB，如果其输入存在transpose，且对最后两个维度做交换，就可以将transpose融入到矩阵乘算子的属性中去）
         // =================================== 作业 ===================================
+    // Step 1: Remove redundant transpose pairs
+    auto it = ops.begin();
+    while (it != ops.end()) {
+        if (it + 1 != ops.end() && 
+            it->getType() == OpCode::Transpose && 
+            std::next(it)->getType() == OpCode::Transpose) {
+            
+            auto &t1 = *it;
+            auto &t2 = *(it+1);
+            
+            // Check if transpose axes are the same (reverse order)
+            if (t1.getAxes() == t2.getAxes()) {
+                // Remove t2 first to avoid iterator invalidation
+                removeOperator(t2);
+                it = ops.erase(it); // erase t1 now
+                continue;
+            }
+        }
+        ++it;
     }
 
+    // Step 2: Merge transpose into matmul
+    // 遍历所有 Matmul 节点，尝试合并前置的 Transpose
+    for (auto &matmul : ops) {
+        if (matmul.getType() != OpCode::MatMul) continue;
+        
+        // Check input A and B for possible preceding Transposes
+        auto *inputA = matmul.getInput(0);
+        auto *inputB = matmul.getInput(1);
+        
+        // Check if inputA is a Transpose, and its axis affects last two dimensions
+        if (inputA && inputA->getType() == OpCode::Transpose) {
+            auto &tA = *inputA;
+            if (tA.getAxes().empty() || tA.getAxes().size() == 1) {
+                // Transpose on the last dimension (e.g., [::-1])
+                matmul.setTransA(true);
+                // Disconnect and remove the transpose node
+                removeOperator(*inputA);
+            }
+        }
+        
+        // Similarly for inputB
+        if (inputB && inputB->getType() == OpCode::Transpose) {
+            auto &tB = *inputB;
+            if (tB.getAxes().empty() || tB.getAxes().size() == 1) {
+                matmul.setTransB(true);
+                removeOperator(*inputB);
+            }
+        }
+    }
+    }
+    // void GraphObj::removeOperator(OperatorObj &op) {
+    //     // 断开输入和输出的链接
+    //     for (auto input : op.getInputs()) {
+    //         input->removeTarget(op);
+    //         if (auto source = input->getSource()) {
+    //             source->removeSuccessors(op);
+    //             op.removePredecessors(source);
+    //         }
+    //     }
+    //     for (auto output : op.getOutputs()) {
+    //         output->setSource(nullptr);
+    //         for (auto successor = output->getTargets()) {
+    //             successor->removePredecessors(op);
+    //             op.removeSuccessors(successor);
+    //         }
+    //     }
+        
+    //     // 从操作符列表中移除
+    //     auto it = std::find(ops.begin(), ops.end(), op);
+    //     if (it != ops.end()) {
+    //         ops.erase(it);
+    //     }
+    // }
     Tensor GraphObj::getTensor(int fuid) const
     {
         for (auto tensor : tensors)
