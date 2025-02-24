@@ -50,7 +50,7 @@ namespace infini
                 return addr;
             }
         }
-        printf("when allocate memory,there maybe some problem\n");
+        printf("when allocate memory,there is an action requesting new memory\n");
         // 第二阶段：没有可用空闲块，从堆末端分配
         const size_t allocatedAddr = heapEnd;
         heapEnd += size;  // 移动堆末端指针
@@ -67,30 +67,33 @@ namespace infini
         // =================================== 作业 ===================================
         // TODO: 设计一个算法来回收内存
         // =================================== 作业 ===================================
-        // 插入新空闲块并获取迭代器
-        auto [newIt, success] = freeBlocks.emplace(addr, size);
-        auto currentIt = newIt;
-        // 前向合并：检查与前一块的连续性
-        if (currentIt != freeBlocks.begin()) {
-            auto prevIt = std::prev(currentIt);
-            if (prevIt->first + prevIt->second == addr) {
-                // 合并到前一块
-                prevIt->second += size;
-                freeBlocks.erase(currentIt);
-                currentIt = prevIt;  // 更新当前迭代器
-                addr = prevIt->first; // 更新合并后的地址
-                size = prevIt->second; // 更新合并后的大小
+        if(addr + size ==heapEnd){
+            heapEnd = addr;
+        }else{
+            // 插入新空闲块并获取迭代器
+            auto [newIt, success] = freeBlocks.emplace(addr, size);
+            auto currentIt = newIt;
+            // 前向合并：检查与前一块的连续性
+            if (currentIt != freeBlocks.begin()) {
+                auto prevIt = std::prev(currentIt);
+                if (prevIt->first + prevIt->second == addr) {
+                    // 合并到前一块
+                    prevIt->second += size;
+                    freeBlocks.erase(currentIt);
+                    currentIt = prevIt;  // 更新当前迭代器
+                    addr = prevIt->first; // 更新合并后的地址
+                    size = prevIt->second; // 更新合并后的大小
+                }
+            }
+            // 后向合并：检查与后一块的连续性
+            auto nextIt = std::next(currentIt);
+            if (nextIt != freeBlocks.end() && 
+                addr + size == nextIt->first) {
+                currentIt->second += nextIt->second;
+                freeBlocks.erase(nextIt);
             }
         }
-        // 后向合并：检查与后一块的连续性
-        auto nextIt = std::next(currentIt);
-        if (nextIt != freeBlocks.end() && 
-            addr + size == nextIt->first) {
-            currentIt->second += nextIt->second;
-            freeBlocks.erase(nextIt);
-        }
     }
-
     void *Allocator::getPtr()
     {
         if (this->ptr == nullptr)
