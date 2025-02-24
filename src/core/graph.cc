@@ -153,6 +153,23 @@ namespace infini
         // HINT: 获取分配好的内存指针后，可以调用 tensor 的 setDataBlob 函数给 tensor 绑定内存
         // =================================== 作业 ===================================
 
+
+         // 分配内存偏移量并记录
+        std::unordered_map<Tensor, size_t> tensorOffsets;
+        for (const auto& tensor : tensors) {
+            size_t size = tensor->getBytes();
+            size_t offset = allocator.alloc(size);
+            tensorOffsets[tensor] = offset;
+        }
+        // 实际分配内存
+        void* basePtr = allocator.getPtr();
+           // 绑定内存到各个张量
+        for (const auto& tensor : tensors) {
+            size_t offset = tensorOffsets[tensor];
+            void* dataPtr = static_cast<char*>(basePtr) + offset;
+            // 创建Blob并设置到张量中
+            tensor->setDataBlob(make_ref<BlobObj>(runtime, dataPtr));
+        }
         allocator.info();
     }
 

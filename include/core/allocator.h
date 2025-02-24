@@ -27,6 +27,10 @@ namespace infini {
     // TODO：可能需要设计一个数据结构来存储free block，以便于管理和合并
     // HINT: 可以使用一个 map 来存储 free block，key 为 block 的起始/结尾地址，value 为 block 的大小
     // =================================== 作业 ===================================
+    // 按地址排序的空闲块表 <起始地址, 块大小>
+    std::map<size_t, size_t> freeBlocks;
+    // 当前内存分配末端地址(用于首次分配)
+    size_t heapEnd;
 
   public:
     Allocator(Runtime runtime);
