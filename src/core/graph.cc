@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <numeric>
 #include <queue>
-
 namespace infini
 {
 
@@ -110,51 +109,102 @@ namespace infini
     auto it = ops.begin();
     while (it != ops.end()) {
         if (it + 1 != ops.end() && 
-            it->getType() == OpCode::Transpose && 
-            std::next(it)->getType() == OpCode::Transpose) {
-            
-            auto &t1 = *it;
-            auto &t2 = *(it+1);
-            
+            (*it)->getOpType() == OpType::Transpose && 
+            (*(it+1))->getOpType() == OpType::Transpose) {
+            // auto &t1 = *it;
+            // auto &t2 = *(it+1);
+            // 动态转换为 TransposeObj 以访问转置轴属性
+            auto t1 = std::dynamic_pointer_cast<TransposeObj>(*it);
+            auto t2 = std::dynamic_pointer_cast<TransposeObj>(*(it + 1));
             // Check if transpose axes are the same (reverse order)
-            if (t1.getAxes() == t2.getAxes()) {
-                // Remove t2 first to avoid iterator invalidation
-                removeOperator(t2);
-                it = ops.erase(it); // erase t1 now
-                continue;
+            if ( t1->getOutputs()[0] == t2->getInputs()[0]) {
+                // 检查轴顺序是否互为逆操作
+                auto permute1 = t1->getPermute();
+                auto permute2 = t2->getPermute();
+                bool isInverse = true;
+                for (size_t i = 0; i < permute1.size(); ++i) {
+                    if (permute1[permute2[i]] != (int)i) {
+                        isInverse = false;
+                        break;
+                    }
+                }
+                if (isInverse) {
+                    // 删除两个转置算子，直接连接 t1 的输入到 t2 的输出
+                    auto inputTensor = t1->getInputs()[0];
+                    auto outputTensor = t2->getOutputs()[0];
+                    outputTensor->setSource(inputTensor->getSource());
+                    removeOperator(t2);
+                    it = ops.erase(it + 1);
+                    removeOperator(t1);
+                    it = ops.erase(it);
+                    continue;
+                }
             }
         }
         ++it;
     }
 
-    // Step 2: Merge transpose into matmul
-    // 遍历所有 Matmul 节点，尝试合并前置的 Transpose
-    for (auto &matmul : ops) {
-        if (matmul.getType() != OpCode::MatMul) continue;
-        
-        // Check input A and B for possible preceding Transposes
-        auto *inputA = matmul.getInput(0);
-        auto *inputB = matmul.getInput(1);
-        
-        // Check if inputA is a Transpose, and its axis affects last two dimensions
-        if (inputA && inputA->getType() == OpCode::Transpose) {
-            auto &tA = *inputA;
-            if (tA.getAxes().empty() || tA.getAxes().size() == 1) {
-                // Transpose on the last dimension (e.g., [::-1])
-                matmul.setTransA(true);
-                // Disconnect and remove the transpose node
-                removeOperator(*inputA);
+   // Step 2: 合并 Transpose 到 Matmul
+   for (auto &op : ops) {
+    // 1. 检查当前算子是否为 Matmul
+    if (op->getOpType() != OpType::MatMul)
+        continue;
+
+    // 2. 动态转换为 MatmulObj 以访问 transA/transB 属性
+    auto matmul = std::dynamic_pointer_cast<MatmulObj>(op);
+    if (!matmul)
+        continue;
+
+    // 3. 处理输入 A 的前置 Transpose
+    auto inputA = matmul->getInputs()[0];
+    if (inputA->getSource() && 
+        inputA->getSource()->getOpType() == OpType::Transpose) {
+        auto transposeA = std::dynamic_pointer_cast<TransposeObj>(inputA->getSource());
+        if (transposeA) {
+            // 检查 Transpose 是否仅交换最后两个维度
+            auto permute = transposeA->getPermute();
+            bool isLastTwoSwapped = true;
+            for (size_t i = 0; i < permute.size() - 2; ++i) {
+                if (permute[i] != (int)i) {
+                    isLastTwoSwapped = false;
+                    break;
+                }
+            }
+            if (isLastTwoSwapped && 
+                permute[permute.size() - 2] == (int)(permute.size() - 1) &&
+                permute[permute.size() - 1] == (int)(permute.size() - 2)) {
+                // 合并到 Matmul 的 transA 属性
+                matmul->setTransA(!matmul->getTransA());
+                // 将 Matmul 的输入直接连接到 Transpose 的输入
+                matmul->replaceInput(inputA, transposeA->getInputs()[0]);
+                removeOperator(transposeA);
             }
         }
-        
-        // Similarly for inputB
-        if (inputB && inputB->getType() == OpCode::Transpose) {
-            auto &tB = *inputB;
-            if (tB.getAxes().empty() || tB.getAxes().size() == 1) {
-                matmul.setTransB(true);
-                removeOperator(*inputB);
+    }
+
+    // 4. 处理输入 B 的前置 Transpose（逻辑同上）
+    auto inputB = matmul->getInputs()[1];
+    if (inputB->getSource() && 
+        inputB->getSource()->getOpType() == OpType::Transpose) {
+        auto transposeB = std::dynamic_pointer_cast<TransposeObj>(inputB->getSource());
+        if (transposeB) {
+            auto permute = transposeB->getPermute();
+            bool isLastTwoSwapped = true;
+            for (size_t i = 0; i < permute.size() - 2; ++i) {
+                if (permute[i] != (int)i) {
+                    isLastTwoSwapped = false;
+                    break;
+                }
+            }
+            if (isLastTwoSwapped && 
+                permute[permute.size() - 2] == (int)(permute.size() - 1) &&
+                permute[permute.size() - 1] == (int)(permute.size() - 2)) {
+                matmul->setTransB(!matmul->getTransB());
+                matmul->replaceInput(inputB, transposeB->getInputs()[0]);
+                removeOperator(transposeB);
             }
         }
+    }
     }
     }
     // void GraphObj::removeOperator(OperatorObj &op) {
